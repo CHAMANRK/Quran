@@ -1,0 +1,11 @@
+/* Bug Bounty — uses the app's existing theme variables */
+.qb-hunter-only { display: none; }
+body.qb-on .qb-hunter-only { display: block; }
+body.qb-on .qb-hunter-only.hidden { display: none !important; }
+.qb-box { background: var(--surface); border: 1px solid var(--border); border-radius: 14px; padding: 12px 14px; margin: 12px 0; }
+.qb-pre { white-space: pre-wrap; font-size: .9rem; line-height: 1.55; }
+.qb-ro { background: var(--success-bg); }
+.qb-q { margin: 14px 0; }
+.qb-opt { display: flex; gap: 8px; align-items: flex-start; padding: 8px 4px; }
+.qb-in { width: 100%; box-sizing: border-box; margin: 6px 0; padding: 12px 14px; border: 1px solid var(--border); border-radius: 12px; font: inherit; background: var(--surface); color: var(--text); }
+.qb-msg { color: var(--danger); min-height: 1.2em; margin: 8px 0; font-size: .92rem; }
