@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Bug Bounty Admin</title>
+<style>
+:root{--bg:#F4FBF7;--surface:#fff;--primary:#0B3D2E;--mint:#1CC88A;--text:#17241E;--muted:#5C7268;--border:#DCEBE3;--danger:#D64545;--ok:#E6F9EF;--warn:#FFF6DD}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,sans-serif;padding:14px;max-width:720px;margin:auto}
+h2{margin:6px 0 10px}.card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin:10px 0}
+button{font:inherit;border:0;border-radius:10px;padding:9px 12px;background:var(--primary);color:#fff;cursor:pointer;margin:3px 3px 3px 0}
+button.g{background:#fff;color:var(--primary);border:1px solid var(--border)}button.r{background:var(--danger)}button.m{background:var(--mint);color:#06281d}
+input,select{font:inherit;padding:8px 10px;border:1px solid var(--border);border-radius:10px;width:90px}
+.tabs button{background:#fff;color:var(--primary);border:1px solid var(--border)}.tabs button.on{background:var(--primary);color:#fff}
+.tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.8rem;background:var(--ok)}.tag.w{background:var(--warn)}.tag.d{background:#FDEAEA}
+.hint{background:var(--warn);border-radius:8px;padding:6px 8px;font-size:.88rem;margin:6px 0;white-space:pre-wrap}.mut{color:var(--muted);font-size:.88rem}
+pre{white-space:pre-wrap;margin:6px 0;font:inherit;background:var(--ok);border-radius:8px;padding:6px 8px}[hidden]{display:none!important}
+</style>
+</head>
+<body>
+<div id="login" class="card">
+  <h2>🐞 Bug Bounty Admin</h2>
+  <button id="gbtn">Google se login</button>
+  <p id="lmsg" class="mut"></p>
+</div>
+
+<div id="app" hidden>
+  <div class="card"><b>Admin</b> <span id="who" class="mut"></span> <button class="g" id="out">Logout</button>
+    <div id="sum" class="mut"></div></div>
+  <div class="tabs"><button id="tH" class="on">👥 Hunters</button><button id="tR">📋 Reports</button><button id="tE">📤 Export</button></div>
+  <div id="pH"></div>
+  <div id="pR" hidden></div>
+  <div id="pE" hidden>
+    <div class="card"><button id="eTxt">📋 Reports ko text mein copy karo</button><button id="eJson" class="g">⬇️ JSON download</button><p id="eMsg" class="mut"></p></div>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-app.js";
+import { getDatabase, ref, get, set, update, serverTimestamp } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-database.js";
+import { getAuth, GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/12.16.0/firebase-auth.js";
+
+const ADMIN_EMAIL = 'hellochaman532@gmail.com'; // real protection = Firebase Rules; this only shapes the UI
+const app = initializeApp({
+  apiKey: "AIzaSyB99IukU3A9SHpmYiO2QJ7anYuoohwlwnc", authDomain: "quran-quiz-85.firebaseapp.com",
+  databaseURL: "https://quran-quiz-85-default-rtdb.firebaseio.com/", projectId: "quran-quiz-85",
+  appId: "1:1074137604510:web:cc7caceb53b9045fc9f68f"
+}, 'admin');
+const db = getDatabase(app), auth = getAuth(app);
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const fmt = t => t ? new Date(t).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+
+let hunters = {}, status = {}, reports = {}, verdicts = {}, quran = null, tab = 'H';
+
+/* same normalization as the app's search, used only for the auto-hints */
+const norm = t => String(t).replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
+  .replace(/[\u0622\u0623\u0625\u0671]/g, '\u0627').replace(/[\u0649\u06CC\u06D2]/g, '\u064A')
+  .replace(/\u06A9/g, '\u0643').replace(/[\u06C1\u06BE]/g, '\u0647').replace(/\u06C3/g, '\u0629').replace(/\u06BA/g, '\u0646');
+
+/* ---------- login ---------- */
+$('gbtn').onclick = async () => {
+  $('lmsg').textContent = '';
+  try { await signInWithPopup(auth, new GoogleAuthProvider()); }
+  catch (e) { $('lmsg').textContent = 'Login nahi hua: ' + (e.code || e.message); }
+};
+$('out').onclick = () => signOut(auth);
+onAuthStateChanged(auth, async u => {
+  const ok = u && !u.isAnonymous && u.email === ADMIN_EMAIL && u.emailVerified;
+  if (u && !ok) { $('lmsg').textContent = 'Ye account admin nahi hai.'; await signOut(auth); return; }
+  $('login').hidden = !!ok; $('app').hidden = !ok;
+  if (ok) { $('who').textContent = u.email; load(); }
+});
+
+/* ---------- data ---------- */
+async function load() {
+  const g = async p => (await get(ref(db, 'bounty/' + p))).val() || {};
+  try {
+    [hunters, status, reports, verdicts] = await Promise.all([g('hunters'), g('status'), g('reports'), g('admin/verdicts')]);
+  } catch (e) { $('pH').innerHTML = '<div class="card">Data nahi mila (rules ya login check karein): ' + esc(e.code || e.message) + '</div>'; return; }
+  if (!quran) { try { quran = await (await fetch('quran_full.json')).json(); } catch { quran = null; } }
+  render();
+}
+const byUid = () => Object.fromEntries(Object.values(hunters).map(h => [h.uid, h]));
+const repList = () => Object.entries(reports).map(([id, r]) => ({ id, ...r })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+function hint(r) {
+  if (!quran) return '';
+  const c = r.claim || {}, s = r.snapshot || {}, out = [];
+  if (r.type === 'search') {
+    const row = quran.find(a => a.surah_number === c.surah && a.ayat_no === c.ayat);
+    if (!row) return 'Auto: claimed surah:ayat data mein nahi mili.';
+    const q = s.query || '';
+    if (/[a-z]/i.test(q)) out.push('Latin query (surah naam): search mein khud check karein.');
+    else if (norm(row.text).includes(norm(q).trim())) out.push('✅ Query is ayat ke text mein hai, search mein aani chahiye thi (valid ho sakta hai).');
+    else out.push('❌ Query is ayat ke text mein nahi hai (Uthmani spelling ka masla ya galat query, reject ho sakta hai).');
+    out.push(row.para === c.para && row.pip === c.pip ? 'Para/pip data se match.' : `⚠️ Data mein para ${row.para}, pip ${row.pip}; claim ${c.para}/${c.pip}: mushaf se verify karein.`);
+  } else {
+    const a = s.ayat || {};
+    out.push(a.para === c.para && a.pip === c.pip ? '❌ App ka data claim ke barabar hai (app sahi tha, reject ho sakta hai).' : `⚠️ App ke data mein para ${a.para}, pip ${a.pip}; claim ${c.para}/${c.pip}: apne mushaf se verify karein.`);
+  }
+  return 'Auto: ' + out.join('\n');
+}
+
+/* ---------- render ---------- */
+function render() {
+  const rs = repList(), owner = byUid();
+  const unpaid = rs.reduce((n, r) => { const v = verdicts[r.id]; return n + (v && v.status === 'valid' && !v.paid ? (v.amount || 0) : 0); }, 0);
+  const pend = Object.values(hunters).filter(h => !status[h.uid]).length;
+  $('sum').textContent = `Hunters: ${Object.keys(hunters).length} (pending ${pend}) | Reports: ${rs.length} | Baaki payment: ₹${unpaid}`;
+
+  const rej = {}; rs.forEach(r => { if ((verdicts[r.id] || {}).status === 'rejected') rej[r.hunterId] = (rej[r.hunterId] || 0) + 1; });
+  const hs = Object.entries(hunters).map(([wa, h]) => ({ wa, ...h })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+  $('pH').innerHTML = hs.length ? hs.map(h => {
+    const st = status[h.uid] || 'pending', n = rej[h.uid] || 0;
+    return `<div class="card"><b>${esc(h.name)}</b> <span class="tag ${st === 'approved' ? '' : st === 'blocked' ? 'd' : 'w'}">${st}</span>
+      <div class="mut">WhatsApp: ${esc(h.whatsapp)} | UPI: ${esc(h.upi)}<br>Exam: ${esc(h.examScore)} | ${fmt(h.createdAt)}${n >= 3 ? ` | ⚠️ ${n} reject` : ''}</div>
+      ${st !== 'approved' ? `<button class="m" data-a="approve" data-u="${esc(h.uid)}">✅ Approve</button>` : ''}
+      ${st !== 'blocked' ? `<button class="r" data-a="block" data-u="${esc(h.uid)}">⛔ Block</button>` : ''}
+      <button class="g" data-a="reset" data-u="${esc(h.uid)}" data-w="${esc(h.wa)}">🔄 Reset (dobara apply)</button></div>`;
+  }).join('') : '<div class="card mut">Abhi koi hunter nahi.</div>';
+
+  const seen = {};
+  $('pR').innerHTML = rs.length ? rs.slice().reverse().map(r => {
+    const v = verdicts[r.id] || {}, h = owner[r.hunterId] || {}, fp = r.fingerprint;
+    const first = rs.find(x => x.fingerprint === fp), dup = first && first.id !== r.id;
+    const c = r.claim || {}, s = r.snapshot || {};
+    const body = r.type === 'search' ? `Search: <b>${esc(s.query)}</b> (${esc(s.filter)}), ${esc(s.count)} result<br>Claim: ${esc(c.surah)}:${esc(c.ayat)}, para ${esc(c.para)}, pip ${esc(c.pip)}`
+      : `Ayat ${esc((s.ayat || {}).s)}:${esc((s.ayat || {}).a)} (app: para ${esc((s.ayat || {}).para)}, pip ${esc((s.ayat || {}).pip)})<br>User ne likha: ${esc(JSON.stringify(s.typed || {}))} | App: ${esc(s.appResult)}<br>Claim: para ${esc(c.para)}, pip ${esc(c.pip)}`;
+    return `<div class="card"><b>QB-${esc(r.id.slice(-6).toUpperCase())}</b> <span class="tag">${esc(r.type)}</span>
+      <span class="tag ${v.status === 'valid' ? '' : v.status ? 'd' : 'w'}">${esc(v.status || 'pending')}</span>${v.paid ? ' <span class="tag">paid ✅</span>' : ''}${dup ? ' <span class="tag d">duplicate?</span>' : ''}
+      <div class="mut">${esc(h.name || '?')} | ${esc(h.whatsapp || '')} | ${esc(h.upi || '')} | ${fmt(r.createdAt)}</div>
+      <div>${body}</div>${r.opinion ? `<div class="mut">Raay: ${esc(r.opinion)}</div>` : ''}
+      <div class="hint">${esc(hint(r))}${dup ? `\nPehli report is fingerprint ki: QB-${esc(first.id.slice(-6).toUpperCase())}` : ''}</div>
+      ₹<input type="number" min="0" max="100" id="am_${esc(r.id)}" value="${v.amount ?? ''}" placeholder="0-100">
+      <button class="m" data-a="valid" data-r="${esc(r.id)}">Valid</button><button class="g" data-a="duplicate" data-r="${esc(r.id)}">Duplicate</button><button class="r" data-a="rejected" data-r="${esc(r.id)}">Reject</button>
+      ${v.status === 'valid' ? `<button class="g" data-a="paid" data-r="${esc(r.id)}">${v.paid ? 'Paid hata do' : '💸 Paid mark'}</button>` : ''}</div>`;
+  }).join('') : '<div class="card mut">Abhi koi report nahi.</div>';
+  ['H', 'R', 'E'].forEach(k => { $('t' + k).classList.toggle('on', tab === k); $('p' + k).hidden = tab !== k; });
+}
+['H', 'R', 'E'].forEach(k => $('t' + k).onclick = () => { tab = k; render(); });
+
+/* ---------- actions ---------- */
+document.addEventListener('click', async e => {
+  const b = e.target.closest('button[data-a]'); if (!b) return;
+  const a = b.dataset.a, u = b.dataset.u, id = b.dataset.r;
+  try {
+    if (a === 'approve') { await set(ref(db, 'bounty/status/' + u), 'approved'); status[u] = 'approved'; }
+    else if (a === 'block') { if (!confirm('Block karein?')) return; await set(ref(db, 'bounty/status/' + u), 'blocked'); status[u] = 'blocked'; }
+    else if (a === 'reset') {
+      if (!confirm('Reset: is hunter ko dobara apply karna hoga. Reports safe rahengi. Aage badhein?')) return;
+      await update(ref(db, 'bounty'), { ['hunters/' + b.dataset.w]: null, ['byUid/' + u]: null, ['status/' + u]: null });
+      delete hunters[b.dataset.w]; delete status[u];
+    } else if (a === 'paid') {
+      const v = verdicts[id], r = reports[id], np = !v.paid, t = { paid: np, updatedAt: serverTimestamp() };
+      const up = { ['admin/verdicts/' + id + '/paid']: np, ['admin/verdicts/' + id + '/updatedAt']: serverTimestamp() };
+      if (r) { up['pub/' + r.hunterId + '/' + id + '/paid'] = np; up['pub/' + r.hunterId + '/' + id + '/updatedAt'] = serverTimestamp(); }
+      await update(ref(db, 'bounty'), up); v.paid = np;
+    } else {
+      const amount = Math.round(+$('am_' + id).value || 0);
+      if (a === 'valid' && !(amount > 0 && amount <= 100)) { alert('Valid ke liye amount 1 se 100 likhein.'); return; }
+      const v = { status: a, amount: a === 'valid' ? amount : 0, paid: false, updatedAt: serverTimestamp() }, r = reports[id];
+      const up = { ['admin/verdicts/' + id]: v };
+      if (r) up['pub/' + r.hunterId + '/' + id] = { status: a, amount: v.amount, paid: false, updatedAt: serverTimestamp() }; // user sees this in "Meri reports"
+      await update(ref(db, 'bounty'), up); verdicts[id] = { ...v, updatedAt: Date.now() };
+    }
+    render();
+  } catch (err) { alert('Nahi hua: ' + (err.code || err.message)); }
+});
+
+/* ---------- export ---------- */
+$('eTxt').onclick = async () => {
+  const owner = byUid();
+  const t = repList().map(r => {
+    const v = verdicts[r.id] || {}, h = owner[r.hunterId] || {}, c = r.claim || {};
+    return `QB-${r.id.slice(-6).toUpperCase()} | ${r.type} | ${v.status || 'pending'} | ₹${v.amount || 0}${v.paid ? ' (paid)' : ''}\n${h.name || '?'} | WA ${h.whatsapp || ''} | UPI ${h.upi || ''}\nClaim: ${c.surah ? c.surah + ':' + c.ayat + ', ' : ''}para ${c.para}, pip ${c.pip}\n${r.fingerprint}\n`;
+  }).join('\n');
+  try { await navigator.clipboard.writeText(t); $('eMsg').textContent = 'Copy ho gaya.'; } catch { $('eMsg').textContent = 'Copy nahi hua, JSON download use karein.'; }
+};
+$('eJson').onclick = () => {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([JSON.stringify({ hunters, status, reports, verdicts }, null, 2)], { type: 'application/json' }));
+  a.download = 'bounty-export.json'; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+};
+</script>
+</body>
+</html>

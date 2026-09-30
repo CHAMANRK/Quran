@@ -1,0 +1,77 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "rooms": {
+      ".read": true,
+      ".write": true
+    },
+    "bounty": {
+      "hunters": {
+        ".read": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        "$wa": {
+          ".write": "auth != null && ((!data.exists() && newData.child('uid').val() === auth.uid) || (auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true))",
+          ".validate": "$wa.matches(/^[0-9]{10,15}$/) && newData.hasChildren(['uid','name','whatsapp','upi','createdAt']) && newData.child('whatsapp').val() === $wa && newData.child('name').isString() && newData.child('name').val().length <= 80 && newData.child('upi').isString() && newData.child('upi').val().length <= 80 && newData.child('createdAt').val() === now",
+          "$other": {
+            ".validate": "$other === 'uid' || $other === 'name' || $other === 'whatsapp' || $other === 'upi' || $other === 'examScore' || $other === 'rulesVersion' || $other === 'createdAt'"
+          }
+        }
+      },
+      "byUid": {
+        "$uid": {
+          ".write": "auth != null && ((auth.uid === $uid && !data.exists()) || (auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true))",
+          ".read": "auth != null && auth.uid === $uid",
+          ".validate": "newData.isString() && newData.val().matches(/^[0-9]{10,15}$/)"
+        }
+      },
+      "status": {
+        ".read": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".validate": "newData.val() === 'approved' || newData.val() === 'blocked'"
+        }
+      },
+      "reports": {
+        ".read": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        "$rid": {
+          ".write": "auth != null && !data.exists() && newData.child('hunterId').val() === auth.uid && root.child('bounty/status/' + auth.uid).val() === 'approved'",
+          ".validate": "newData.hasChildren(['hunterId','type','fingerprint','snapshot','claim','createdAt']) && (newData.child('type').val() === 'search' || newData.child('type').val() === 'quiz') && newData.child('fingerprint').isString() && newData.child('fingerprint').val().length <= 300 && newData.child('createdAt').val() === now && (!newData.child('opinion').exists() || newData.child('opinion').val().length <= 500)",
+          "$other": {
+            ".validate": "$other === 'hunterId' || $other === 'type' || $other === 'snapshot' || $other === 'claim' || $other === 'opinion' || $other === 'fingerprint' || $other === 'rulesVersion' || $other === 'createdAt'"
+          }
+        }
+      },
+      "admin": {
+        ".read": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        ".write": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+        "verdicts": {
+          "$rid": {
+            ".validate": "newData.child('status').val() === 'valid' || newData.child('status').val() === 'duplicate' || newData.child('status').val() === 'rejected'",
+            "amount": {
+              ".validate": "newData.isNumber() && newData.val() >= 0 && newData.val() <= 100"
+            }
+          }
+        }
+      },
+      "mine": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          "$rid": {
+            ".write": "auth != null && auth.uid === $uid && !data.exists() && root.child('bounty/status/' + auth.uid).val() === 'approved'",
+            ".validate": "newData.hasChildren(['type','label','createdAt']) && newData.child('label').isString() && newData.child('label').val().length <= 120 && newData.child('createdAt').val() === now && (newData.child('type').val() === 'search' || newData.child('type').val() === 'quiz')"
+          }
+        }
+      },
+      "pub": {
+        "$uid": {
+          ".read": "auth != null && auth.uid === $uid",
+          ".write": "auth != null && auth.token.email === 'hellochaman532@gmail.com' && auth.token.email_verified === true",
+          "$rid": {
+            ".validate": "newData.child('status').val() === 'valid' || newData.child('status').val() === 'duplicate' || newData.child('status').val() === 'rejected'"
+          }
+        }
+      }
+    }
+  }
+}
