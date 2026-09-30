@@ -16,9 +16,15 @@ input,select{font:inherit;padding:8px 10px;border:1px solid var(--border);border
 .tag{display:inline-block;padding:2px 8px;border-radius:99px;font-size:.8rem;background:var(--ok)}.tag.w{background:var(--warn)}.tag.d{background:#FDEAEA}
 .hint{background:var(--warn);border-radius:8px;padding:6px 8px;font-size:.88rem;margin:6px 0;white-space:pre-wrap}.mut{color:var(--muted);font-size:.88rem}
 pre{white-space:pre-wrap;margin:6px 0;font:inherit;background:var(--ok);border-radius:8px;padding:6px 8px}[hidden]{display:none!important}
+#toast{position:fixed;left:50%;bottom:24px;transform:translate(-50%,30px);max-width:92%;padding:11px 18px;border-radius:14px;background:var(--primary);color:#fff;opacity:0;pointer-events:none;transition:.25s;z-index:99;text-align:center}
+#toast.show{opacity:1;transform:translate(-50%,0)}#toast.err{background:var(--danger)}
+#modal{position:fixed;inset:0;background:rgba(10,30,22,.5);display:grid;place-items:center;z-index:98;padding:20px}
+#modal .box{background:#fff;border-radius:18px;padding:18px;max-width:380px;width:100%}#modal h3{margin:0 0 6px}
+button.busy{opacity:.55;pointer-events:none}.banner{background:#FDEAEA;border:1px solid #F3C4C4;border-radius:12px;padding:10px 12px;margin:10px 0}
 </style>
 </head>
 <body>
+<div id="toast"></div><div id="modal" hidden></div>
 <div id="login" class="card">
   <h2>🐞 Bug Bounty Admin</h2>
   <button id="gbtn">Google se login</button>
@@ -28,6 +34,7 @@ pre{white-space:pre-wrap;margin:6px 0;font:inherit;background:var(--ok);border-r
 <div id="app" hidden>
   <div class="card"><b>Admin</b> <span id="who" class="mut"></span> <button class="g" id="out">Logout</button>
     <div id="sum" class="mut"></div></div>
+  <div id="banner"></div>
   <div class="tabs"><button id="tH" class="on">👥 Hunters</button><button id="tR">📋 Reports</button><button id="tE">📤 Export</button></div>
   <div id="pH"></div>
   <div id="pR" hidden></div>
@@ -51,6 +58,21 @@ const db = getDatabase(app), auth = getAuth(app);
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = t => t ? new Date(t).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
+
+function toast(msg, err) {
+  const t = $('toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), err ? 4200 : 2400);
+}
+function ask(title, msg, ok = 'Haan') {
+  return new Promise(res => {
+    const m = $('modal'); m.hidden = false;
+    m.innerHTML = `<div class="box"><h3>${esc(title)}</h3><p class="mut">${esc(msg)}</p><button class="g" id="mNo">Nahi</button><button class="r" id="mYes">${esc(ok)}</button></div>`;
+    const done = v => { m.hidden = true; m.innerHTML = ''; res(v); };
+    $('mYes').onclick = () => done(true); $('mNo').onclick = () => done(false); m.onclick = e => { if (e.target === m) done(false); };
+  });
+}
+const errMsg = e => /PERMISSION_DENIED/i.test(e.code || e.message || '')
+  ? 'Permission nahi mili. Firebase rules publish hue? (firebase-rules.json wala version chahiye)' : (e.code || e.message);
 
 let hunters = {}, status = {}, reports = {}, verdicts = {}, quran = null, tab = 'H';
 
@@ -79,6 +101,8 @@ async function load() {
   try {
     [hunters, status, reports, verdicts] = await Promise.all([g('hunters'), g('status'), g('reports'), g('admin/verdicts')]);
   } catch (e) { $('pH').innerHTML = '<div class="card">Data nahi mila (rules ya login check karein): ' + esc(e.code || e.message) + '</div>'; return; }
+  try { await set(ref(db, 'bounty/admin/lastLogin'), serverTimestamp()); $('banner').innerHTML = ''; }
+  catch (e) { $('banner').innerHTML = '<div class="banner">⚠️ Firebase rules purane hain: approve/verdict save nahi honge. <b>firebase-rules.json</b> ka naya version Rules tab mein publish karein.</div>'; }
   if (!quran) { try { quran = await (await fetch('quran_full.json')).json(); } catch { quran = null; } }
   render();
 }
@@ -113,11 +137,12 @@ function render() {
   const rej = {}; rs.forEach(r => { if ((verdicts[r.id] || {}).status === 'rejected') rej[r.hunterId] = (rej[r.hunterId] || 0) + 1; });
   const hs = Object.entries(hunters).map(([wa, h]) => ({ wa, ...h })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   $('pH').innerHTML = hs.length ? hs.map(h => {
-    const st = status[h.uid] || 'pending', n = rej[h.uid] || 0;
+    const st = (h.uid && status[h.uid]) || 'pending', n = rej[h.uid] || 0;
     return `<div class="card"><b>${esc(h.name)}</b> <span class="tag ${st === 'approved' ? '' : st === 'blocked' ? 'd' : 'w'}">${st}</span>
       <div class="mut">WhatsApp: ${esc(h.whatsapp)} | UPI: ${esc(h.upi)}<br>Exam: ${esc(h.examScore)} | ${fmt(h.createdAt)}${n >= 3 ? ` | ⚠️ ${n} reject` : ''}</div>
-      ${st !== 'approved' ? `<button class="m" data-a="approve" data-u="${esc(h.uid)}">✅ Approve</button>` : ''}
-      ${st !== 'blocked' ? `<button class="r" data-a="block" data-u="${esc(h.uid)}">⛔ Block</button>` : ''}
+      ${!h.uid ? '<div class="hint">Purana record (login id nahi hai). Approve nahi ho sakta: Reset karein, hunter dobara apply karega.</div>' : ''}
+      ${h.uid && st !== 'approved' ? `<button class="m" data-a="approve" data-u="${esc(h.uid)}">✅ Approve</button>` : ''}
+      ${h.uid && st !== 'blocked' ? `<button class="r" data-a="block" data-u="${esc(h.uid)}">⛔ Block</button>` : ''}
       <button class="g" data-a="reset" data-u="${esc(h.uid)}" data-w="${esc(h.wa)}">🔄 Reset (dobara apply)</button></div>`;
   }).join('') : '<div class="card mut">Abhi koi hunter nahi.</div>';
 
@@ -144,29 +169,34 @@ function render() {
 /* ---------- actions ---------- */
 document.addEventListener('click', async e => {
   const b = e.target.closest('button[data-a]'); if (!b) return;
-  const a = b.dataset.a, u = b.dataset.u, id = b.dataset.r;
+  const a = b.dataset.a, u = b.dataset.u, id = b.dataset.r, hn = (byUid()[u] || hunters[b.dataset.w] || {}).name || 'Hunter';
+  const label = b.textContent; 
   try {
-    if (a === 'approve') { await set(ref(db, 'bounty/status/' + u), 'approved'); status[u] = 'approved'; }
-    else if (a === 'block') { if (!confirm('Block karein?')) return; await set(ref(db, 'bounty/status/' + u), 'blocked'); status[u] = 'blocked'; }
+    if (a === 'block' && !await ask('Block karein?', hn + ' ab report nahi bhej payega.', 'Block')) return;
+    if (a === 'reset' && !await ask('Reset karein?', hn + ' ko dobara apply karna hoga. Purani reports safe rahengi.', 'Reset')) return;
+    let amount = 0;
+    if (a === 'valid') { amount = Math.round(+$('am_' + id).value || 0); if (!(amount > 0 && amount <= 100)) { toast('Valid ke liye amount 1 se 100 likhein', true); return; } }
+    b.classList.add('busy'); b.textContent = '…';
+    if (a === 'approve') { await set(ref(db, 'bounty/status/' + u), 'approved'); status[u] = 'approved'; toast('✅ ' + hn + ' approve ho gaya'); }
+    else if (a === 'block') { await set(ref(db, 'bounty/status/' + u), 'blocked'); status[u] = 'blocked'; toast('⛔ ' + hn + ' block ho gaya'); }
     else if (a === 'reset') {
-      if (!confirm('Reset: is hunter ko dobara apply karna hoga. Reports safe rahengi. Aage badhein?')) return;
-      await update(ref(db, 'bounty'), { ['hunters/' + b.dataset.w]: null, ['byUid/' + u]: null, ['status/' + u]: null });
-      delete hunters[b.dataset.w]; delete status[u];
+      const up = { ['hunters/' + b.dataset.w]: null }; if (u) { up['byUid/' + u] = null; up['status/' + u] = null; }
+      await update(ref(db, 'bounty'), up); delete hunters[b.dataset.w]; if (u) delete status[u]; toast('🔄 Reset ho gaya, ' + hn + ' dobara apply kar sakta hai');
     } else if (a === 'paid') {
-      const v = verdicts[id], r = reports[id], np = !v.paid, t = { paid: np, updatedAt: serverTimestamp() };
+      const v = verdicts[id], r = reports[id], np = !v.paid;
       const up = { ['admin/verdicts/' + id + '/paid']: np, ['admin/verdicts/' + id + '/updatedAt']: serverTimestamp() };
       if (r) { up['pub/' + r.hunterId + '/' + id + '/paid'] = np; up['pub/' + r.hunterId + '/' + id + '/updatedAt'] = serverTimestamp(); }
-      await update(ref(db, 'bounty'), up); v.paid = np;
+      await update(ref(db, 'bounty'), up); v.paid = np; toast(np ? '💸 Paid mark ho gaya' : 'Paid hata diya');
     } else {
-      const amount = Math.round(+$('am_' + id).value || 0);
-      if (a === 'valid' && !(amount > 0 && amount <= 100)) { alert('Valid ke liye amount 1 se 100 likhein.'); return; }
       const v = { status: a, amount: a === 'valid' ? amount : 0, paid: false, updatedAt: serverTimestamp() }, r = reports[id];
       const up = { ['admin/verdicts/' + id]: v };
       if (r) up['pub/' + r.hunterId + '/' + id] = { status: a, amount: v.amount, paid: false, updatedAt: serverTimestamp() }; // user sees this in "Meri reports"
       await update(ref(db, 'bounty'), up); verdicts[id] = { ...v, updatedAt: Date.now() };
+      toast({ valid: '✅ Valid ₹' + amount + ' save ho gaya', duplicate: '🔁 Duplicate mark ho gaya', rejected: '❌ Reject ho gaya' }[a]);
     }
     render();
-  } catch (err) { alert('Nahi hua: ' + (err.code || err.message)); }
+  } catch (err) { toast('Nahi hua: ' + errMsg(err), true); }
+  finally { b.classList.remove('busy'); if (b.isConnected) b.textContent = label; }
 });
 
 /* ---------- export ---------- */

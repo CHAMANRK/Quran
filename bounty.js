@@ -118,11 +118,10 @@ async function syncStatus() {
   if (!uid) { offline = true; loading = false; refreshHome(); return; }
   try {
     let h = hunter();
-    if (h && h.id !== uid) { LS.set('qb_hunter', null); h = null; status = 'none'; mine = []; }
-    if (!h) { // phone data cleared but this browser's login survived -> recover instead of asking to apply again
-      const key = (await get(ref(db, 'bounty/byUid/' + uid))).val();
-      if (key) { h = { id: uid, name: cache.name || 'Hunter', wa: key }; LS.set('qb_hunter', h); }
-    }
+    if (h && h.id !== uid) { LS.set('qb_hunter', null); h = null; }
+    const key = (await get(ref(db, 'bounty/byUid/' + uid))).val();   // is this browser really registered on the server?
+    if (h && !key) { LS.set('qb_hunter', null); h = null; }           // admin reset it (or old record) -> can apply again
+    if (!h && key) { h = { id: uid, name: cache.name || 'Hunter', wa: key }; LS.set('qb_hunter', h); } // phone data cleared, login survived
     if (h) {
       const v = (await get(ref(db, 'bounty/status/' + uid))).val();
       status = v === 'approved' || v === 'blocked' ? v : 'pending';
@@ -209,7 +208,7 @@ function todayCount() { const d = LS.get('qb_day'); const t = new Date().toDateS
 
 function openReport(type) {
   if (!hunterOn()) return;
-  if (todayCount() >= MAX_PER_DAY) { alert('Aaj ki limit (' + MAX_PER_DAY + ' reports) poori ho gayi. Kal try karein.'); return; }
+  if (todayCount() >= MAX_PER_DAY) { toast('Aaj ki limit (' + MAX_PER_DAY + ' reports) poori ho gayi. Kal try karein.'); return; }
   let ro = '';
   if (type === 'search') {
     const inp = $('searchInput').value.trim();
