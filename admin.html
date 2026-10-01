@@ -21,6 +21,9 @@ pre{white-space:pre-wrap;margin:6px 0;font:inherit;background:var(--ok);border-r
 #modal{position:fixed;inset:0;background:rgba(10,30,22,.5);display:grid;place-items:center;z-index:98;padding:20px}
 #modal .box{background:#fff;border-radius:18px;padding:18px;max-width:380px;width:100%}#modal h3{margin:0 0 6px}
 button.busy{opacity:.55;pointer-events:none}.banner{background:#FDEAEA;border:1px solid #F3C4C4;border-radius:12px;padding:10px 12px;margin:10px 0}
+.chips{display:flex;gap:6px;flex-wrap:wrap;margin:8px 0}.chips button{background:#fff;color:var(--primary);border:1px solid var(--border);border-radius:99px;padding:6px 11px;margin:0;font-size:.88rem}.chips button.on{background:var(--primary);color:#fff}
+input.s{width:100%;margin:2px 0 6px}.pay b.big{font-size:1.15rem}.bar{height:8px;border-radius:99px;background:var(--border);overflow:hidden;margin:6px 0}.bar i{display:block;height:100%;background:var(--mint)}.bar.over i{background:var(--danger)}
+#toast.act{pointer-events:auto}#toast .u{background:#fff;color:var(--primary);margin:0 0 0 10px;padding:5px 10px}
 </style>
 </head>
 <body>
@@ -35,9 +38,10 @@ button.busy{opacity:.55;pointer-events:none}.banner{background:#FDEAEA;border:1p
   <div class="card"><b>Admin</b> <span id="who" class="mut"></span> <button class="g" id="out">Logout</button>
     <div id="sum" class="mut"></div></div>
   <div id="banner"></div>
-  <div class="tabs"><button id="tH" class="on">👥 Hunters</button><button id="tR">📋 Reports</button><button id="tE">📤 Export</button></div>
+  <div class="tabs"><button id="tH" class="on">👥 Hunters</button><button id="tR">📋 Reports</button><button id="tP">💸 Payments</button><button id="tE">📤 Export</button></div>
   <div id="pH"></div>
-  <div id="pR" hidden></div>
+  <div id="pR" hidden><div id="rBar"></div><div id="rList"></div></div>
+  <div id="pP" hidden></div>
   <div id="pE" hidden>
     <div class="card"><button id="eTxt">📋 Reports ko text mein copy karo</button><button id="eJson" class="g">⬇️ JSON download</button><p id="eMsg" class="mut"></p></div>
   </div>
@@ -59,9 +63,12 @@ const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const fmt = t => t ? new Date(t).toLocaleString('en-IN', { dateStyle: 'medium', timeStyle: 'short' }) : '-';
 
-function toast(msg, err) {
-  const t = $('toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.classList.add('show');
-  clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), err ? 4200 : 2400);
+function toast(msg, err, undo) {
+  const t = $('toast'); t.textContent = msg; t.classList.toggle('err', !!err); t.classList.toggle('act', !!undo);
+  if (undo) { const u = document.createElement('button'); u.className = 'u'; u.textContent = '↩️ Undo';
+    u.onclick = async () => { t.classList.remove('show'); try { await undo(); render(); toast('Undo ho gaya'); } catch (e) { toast('Undo nahi hua: ' + errMsg(e), true); } };
+    t.appendChild(u); }
+  t.classList.add('show'); clearTimeout(t._h); t._h = setTimeout(() => t.classList.remove('show'), undo ? 7000 : err ? 4200 : 2400);
 }
 function ask(title, msg, ok = 'Haan') {
   return new Promise(res => {
@@ -74,7 +81,8 @@ function ask(title, msg, ok = 'Haan') {
 const errMsg = e => /PERMISSION_DENIED/i.test(e.code || e.message || '')
   ? 'Permission nahi mili. Firebase rules publish hue? (firebase-rules.json wala version chahiye)' : (e.code || e.message);
 
-let hunters = {}, status = {}, reports = {}, verdicts = {}, quran = null, tab = 'H';
+let hunters = {}, status = {}, reports = {}, verdicts = {}, settings = {}, quran = null, tab = 'H', rf = 'pending', rq = '';
+const TABS = ['H', 'R', 'P', 'E'];
 
 /* same normalization as the app's search, used only for the auto-hints */
 const norm = t => String(t).replace(/[\u064B-\u065F\u0670\u06D6-\u06ED]/g, '')
@@ -99,7 +107,7 @@ onAuthStateChanged(auth, async u => {
 async function load() {
   const g = async p => (await get(ref(db, 'bounty/' + p))).val() || {};
   try {
-    [hunters, status, reports, verdicts] = await Promise.all([g('hunters'), g('status'), g('reports'), g('admin/verdicts')]);
+    [hunters, status, reports, verdicts, settings] = await Promise.all([g('hunters'), g('status'), g('reports'), g('admin/verdicts'), g('admin/settings')]);
   } catch (e) { $('pH').innerHTML = '<div class="card">Data nahi mila (rules ya login check karein): ' + esc(e.code || e.message) + '</div>'; return; }
   try { await set(ref(db, 'bounty/admin/lastLogin'), serverTimestamp()); $('banner').innerHTML = ''; }
   catch (e) { $('banner').innerHTML = '<div class="banner">⚠️ Firebase rules purane hain: approve/verdict save nahi honge. <b>firebase-rules.json</b> ka naya version Rules tab mein publish karein.</div>'; }
@@ -108,6 +116,27 @@ async function load() {
 }
 const byUid = () => Object.fromEntries(Object.values(hunters).map(h => [h.uid, h]));
 const repList = () => Object.entries(reports).map(([id, r]) => ({ id, ...r })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+
+const rid = id => 'QB-' + id.slice(-6).toUpperCase();
+const stOf = r => (verdicts[r.id] || {}).status || 'pending';
+const mKey = t => { const d = new Date(t || Date.now()); return d.getFullYear() + '-' + d.getMonth(); };
+function monthStats(skipId) {
+  const k = mKey(), o = { n: 0, valid: 0, paid: 0 };
+  repList().forEach(r => { const v = verdicts[r.id]; if (v && v.status === 'valid' && r.id !== skipId && mKey(r.createdAt) === k) { o.n++; o.valid += v.amount || 0; if (v.paid) o.paid += v.amount || 0; } });
+  return o;
+}
+async function writeVerdict(id, v) {
+  const val = v ? { status: v.status, amount: v.amount || 0, paid: !!v.paid, updatedAt: serverTimestamp() } : null, r = reports[id];
+  const up = { ['admin/verdicts/' + id]: val }; if (r) up['pub/' + r.hunterId + '/' + id] = val; // user sees this in "Meri reports"
+  await update(ref(db, 'bounty'), up);
+  if (v) verdicts[id] = { status: v.status, amount: v.amount || 0, paid: !!v.paid, updatedAt: Date.now() }; else delete verdicts[id];
+}
+async function setPaid(ids, val) {
+  const up = {};
+  ids.forEach(i => { const r = reports[i]; up['admin/verdicts/' + i + '/paid'] = val; up['admin/verdicts/' + i + '/updatedAt'] = serverTimestamp();
+    if (r) { up['pub/' + r.hunterId + '/' + i + '/paid'] = val; up['pub/' + r.hunterId + '/' + i + '/updatedAt'] = serverTimestamp(); } });
+  await update(ref(db, 'bounty'), up); ids.forEach(i => { if (verdicts[i]) verdicts[i].paid = val; });
+}
 
 function hint(r) {
   if (!quran) return '';
@@ -132,39 +161,70 @@ function render() {
   const rs = repList(), owner = byUid();
   const unpaid = rs.reduce((n, r) => { const v = verdicts[r.id]; return n + (v && v.status === 'valid' && !v.paid ? (v.amount || 0) : 0); }, 0);
   const pend = Object.values(hunters).filter(h => !status[h.uid]).length;
-  $('sum').textContent = `Hunters: ${Object.keys(hunters).length} (pending ${pend}) | Reports: ${rs.length} | Baaki payment: ₹${unpaid}`;
+  const ms = monthStats(), cap = +settings.monthCap || 0;
+  $('sum').textContent = `Hunters: ${Object.keys(hunters).length} (pending ${pend}) | Reports: ${rs.length} | Baaki payment: ₹${unpaid} | Is mahine valid: ₹${ms.valid}${cap ? ' / ₹' + cap + (ms.valid >= cap ? ' ⚠️' : '') : ''}`;
 
+  const hst = {}; rs.forEach(r => { const o = hst[r.hunterId] ||= { n: 0, a: 0 }; o.n++; const v = verdicts[r.id]; if (v && v.status === 'valid') o.a += v.amount || 0; });
   const rej = {}; rs.forEach(r => { if ((verdicts[r.id] || {}).status === 'rejected') rej[r.hunterId] = (rej[r.hunterId] || 0) + 1; });
   const hs = Object.entries(hunters).map(([wa, h]) => ({ wa, ...h })).sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
   $('pH').innerHTML = hs.length ? hs.map(h => {
     const st = (h.uid && status[h.uid]) || 'pending', n = rej[h.uid] || 0;
     return `<div class="card"><b>${esc(h.name)}</b> <span class="tag ${st === 'approved' ? '' : st === 'blocked' ? 'd' : 'w'}">${st}</span>
-      <div class="mut">WhatsApp: ${esc(h.whatsapp)} | UPI: ${esc(h.upi)}<br>Exam: ${esc(h.examScore)} | ${fmt(h.createdAt)}${n >= 3 ? ` | ⚠️ ${n} reject` : ''}</div>
+      <div class="mut">WhatsApp: ${esc(h.whatsapp)} | UPI: ${esc(h.upi)}<br>Reports ${(hst[h.uid] || { n: 0 }).n} | Valid ₹${(hst[h.uid] || { a: 0 }).a}<br>Exam: ${esc(h.examScore)} | ${fmt(h.createdAt)}${n >= 3 ? ` | ⚠️ ${n} reject` : ''}</div>
       ${!h.uid ? '<div class="hint">Purana record (login id nahi hai). Approve nahi ho sakta: Reset karein, hunter dobara apply karega.</div>' : ''}
       ${h.uid && st !== 'approved' ? `<button class="m" data-a="approve" data-u="${esc(h.uid)}">✅ Approve</button>` : ''}
       ${h.uid && st !== 'blocked' ? `<button class="r" data-a="block" data-u="${esc(h.uid)}">⛔ Block</button>` : ''}
+      <button class="g" data-a="hrep" data-w="${esc(h.wa)}">📋 Reports</button>
       <button class="g" data-a="reset" data-u="${esc(h.uid)}" data-w="${esc(h.wa)}">🔄 Reset (dobara apply)</button></div>`;
   }).join('') : '<div class="card mut">Abhi koi hunter nahi.</div>';
 
-  const seen = {};
-  $('pR').innerHTML = rs.length ? rs.slice().reverse().map(r => {
+  renderBar(); renderList(); renderPay();
+  TABS.forEach(k => { $('t' + k).classList.toggle('on', tab === k); $('p' + k).hidden = tab !== k; });
+}
+const FILTERS = [['pending', '⏳ Pending'], ['valid', '✅ Valid'], ['duplicate', '🔁 Duplicate'], ['rejected', '❌ Reject'], ['all', 'Sab']];
+function renderBar() {
+  const rs = repList(), cnt = f => f === 'all' ? rs.length : rs.filter(r => stOf(r) === f).length;
+  $('rBar').innerHTML = `<div class="chips">${FILTERS.map(([f, t]) => `<button data-f="${f}" class="${rf === f ? 'on' : ''}">${t} ${cnt(f)}</button>`).join('')}</div>
+    <input class="s" id="rQ" placeholder="Search: naam, WhatsApp, UPI, QB-ID, query" value="${esc(rq)}">`;
+  $('rQ').oninput = e => { rq = e.target.value; renderList(); };
+}
+function renderList() {
+  const rs = repList(), owner = byUid(), q = rq.trim().toLowerCase();
+  const shown = rs.filter(r => (rf === 'all' || stOf(r) === rf) && (!q || [rid(r.id), (owner[r.hunterId] || {}).name, (owner[r.hunterId] || {}).whatsapp, (owner[r.hunterId] || {}).upi, (r.snapshot || {}).query].join(' ').toLowerCase().includes(q))).reverse();
+  $('rList').innerHTML = shown.length ? shown.map(r => {
     const v = verdicts[r.id] || {}, h = owner[r.hunterId] || {}, fp = r.fingerprint;
     const first = rs.find(x => x.fingerprint === fp), dup = first && first.id !== r.id;
     const c = r.claim || {}, s = r.snapshot || {};
     const body = r.type === 'search' ? `Search: <b>${esc(s.query)}</b> (${esc(s.filter)}), ${esc(s.count)} result<br>Claim: ${esc(c.surah)}:${esc(c.ayat)}, para ${esc(c.para)}, pip ${esc(c.pip)}`
       : `Ayat ${esc((s.ayat || {}).s)}:${esc((s.ayat || {}).a)} (app: para ${esc((s.ayat || {}).para)}, pip ${esc((s.ayat || {}).pip)})<br>User ne likha: ${esc(JSON.stringify(s.typed || {}))} | App: ${esc(s.appResult)}<br>Claim: para ${esc(c.para)}, pip ${esc(c.pip)}`;
-    return `<div class="card"><b>QB-${esc(r.id.slice(-6).toUpperCase())}</b> <span class="tag">${esc(r.type)}</span>
+    return `<div class="card"><b>${rid(r.id)}</b> <span class="tag">${esc(r.type)}</span>
       <span class="tag ${v.status === 'valid' ? '' : v.status ? 'd' : 'w'}">${esc(v.status || 'pending')}</span>${v.paid ? ' <span class="tag">paid ✅</span>' : ''}${dup ? ' <span class="tag d">duplicate?</span>' : ''}
       <div class="mut">${esc(h.name || '?')} | ${esc(h.whatsapp || '')} | ${esc(h.upi || '')} | ${fmt(r.createdAt)}</div>
       <div>${body}</div>${r.opinion ? `<div class="mut">Raay: ${esc(r.opinion)}</div>` : ''}
-      <div class="hint">${esc(hint(r))}${dup ? `\nPehli report is fingerprint ki: QB-${esc(first.id.slice(-6).toUpperCase())}` : ''}</div>
+      <div class="hint">${esc(hint(r))}${dup ? `\nPehli report is fingerprint ki: ${rid(first.id)}` : ''}</div>
       ₹<input type="number" min="0" max="100" id="am_${esc(r.id)}" value="${v.amount ?? ''}" placeholder="0-100">
       <button class="m" data-a="valid" data-r="${esc(r.id)}">Valid</button><button class="g" data-a="duplicate" data-r="${esc(r.id)}">Duplicate</button><button class="r" data-a="rejected" data-r="${esc(r.id)}">Reject</button>
-      ${v.status === 'valid' ? `<button class="g" data-a="paid" data-r="${esc(r.id)}">${v.paid ? 'Paid hata do' : '💸 Paid mark'}</button>` : ''}</div>`;
-  }).join('') : '<div class="card mut">Abhi koi report nahi.</div>';
-  ['H', 'R', 'E'].forEach(k => { $('t' + k).classList.toggle('on', tab === k); $('p' + k).hidden = tab !== k; });
+      ${v.status === 'valid' ? `<button class="g" data-a="paid" data-r="${esc(r.id)}">${v.paid ? 'Paid hata do' : '💸 Paid mark'}</button>` : ''}${v.status ? `<button class="g" data-a="undo" data-r="${esc(r.id)}">↩️ Undo faisla</button>` : ''}</div>`;
+  }).join('') : '<div class="card mut">Is filter mein koi report nahi.</div>';
 }
-['H', 'R', 'E'].forEach(k => $('t' + k).onclick = () => { tab = k; render(); });
+function renderPay() {
+  const owner = byUid(), g = {}, ms = monthStats(), cap = +settings.monthCap || 0;
+  repList().forEach(r => { const v = verdicts[r.id]; if (!v || v.status !== 'valid') return;
+    const o = g[r.hunterId] ||= { h: owner[r.hunterId] || {}, due: 0, paid: 0, n: 0 };
+    if (v.paid) o.paid += v.amount || 0; else { o.due += v.amount || 0; o.n++; } });
+  const rows = Object.entries(g).sort((a, b) => b[1].due - a[1].due), total = rows.reduce((n, [, o]) => n + o.due, 0);
+  const pct = cap ? Math.min(100, Math.round(ms.valid / cap * 100)) : 0;
+  $('pP').innerHTML = `<div class="card"><b>Is mahine</b> <span class="mut">(report ki date ke hisaab se)</span><br>${ms.n} valid | ₹${ms.valid} (paid ₹${ms.paid}, baaki ₹${ms.valid - ms.paid})
+      ${cap ? `<div class="bar ${ms.valid > cap ? 'over' : ''}"><i style="width:${pct}%"></i></div><div class="mut">Cap ₹${cap}: ${ms.valid > cap ? 'paar ho gaya ⚠️' : '₹' + (cap - ms.valid) + ' bacha'}</div>` : '<div class="mut">Cap set nahi hai.</div>'}
+      <div>Mahine ka cap ₹ <input type="number" min="0" id="capIn" value="${cap || ''}" placeholder="0 = koi nahi"> <button data-a="cap">Save</button></div></div>
+    <div class="card"><b>Total baaki: ₹${total}</b> <span class="mut">(${rows.filter(([, o]) => o.due).length} hunters)</span></div>` +
+    (rows.length ? rows.map(([uid, o]) => `<div class="card pay"><b>${esc(o.h.name || '(hunter reset)')}</b> <span class="mut">${esc(o.h.whatsapp || '')}</span>
+      <div>UPI: <b>${esc(o.h.upi || '-')}</b></div>
+      <div>Baaki <b class="big">₹${o.due}</b> (${o.n} report) <span class="mut">| Mila ₹${o.paid}</span></div>
+      ${o.h.upi ? `<button class="g" data-cp="${esc(o.h.upi)}">📋 UPI copy</button>` : ''}${o.due ? `<button class="g" data-cp="${o.due}">📋 ₹${o.due} copy</button><button class="m" data-a="payall" data-u="${esc(uid)}">💸 Sab paid mark</button>` : '<span class="tag">sab paid ✅</span>'}</div>`).join('')
+      : '<div class="card mut">Abhi koi valid report nahi.</div>');
+}
+TABS.forEach(k => $('t' + k).onclick = () => { tab = k; render(); });
 
 /* ---------- actions ---------- */
 document.addEventListener('click', async e => {
@@ -172,31 +232,46 @@ document.addEventListener('click', async e => {
   const a = b.dataset.a, u = b.dataset.u, id = b.dataset.r, hn = (byUid()[u] || hunters[b.dataset.w] || {}).name || 'Hunter';
   const label = b.textContent; 
   try {
+    if (a === 'hrep') { tab = 'R'; rf = 'all'; rq = b.dataset.w; render(); scrollTo(0, 0); return; }
+    if (a === 'cap') { const n = Math.max(0, Math.round(+$('capIn').value || 0)); b.classList.add('busy'); await set(ref(db, 'bounty/admin/settings/monthCap'), n); settings.monthCap = n; toast(n ? 'Cap ₹' + n + ' save ho gaya' : 'Cap hata diya'); render(); return; }
+    if (a === 'undo') {
+      if (!await ask('Faisla wapas lein?', rid(id) + ' phir se pending ho jayegi aur hunter ko "Review mein" dikhegi.', 'Undo')) return;
+      b.classList.add('busy'); await writeVerdict(id, null); toast('↩️ ' + rid(id) + ' pending ho gayi'); render(); return;
+    }
+    if (a === 'payall') {
+      const ids = repList().filter(r => r.hunterId === u && (verdicts[r.id] || {}).status === 'valid' && !verdicts[r.id].paid).map(r => r.id), sum = ids.reduce((n, i) => n + verdicts[i].amount, 0);
+      if (!ids.length || !await ask('Sab paid mark karein?', ids.length + ' reports, total ₹' + sum + '. Pehle UPI se payment kar dein.', 'Paid mark')) return;
+      b.classList.add('busy'); await setPaid(ids, true); toast('💸 ₹' + sum + ' paid mark ho gaya', false, () => setPaid(ids, false)); render(); return;
+    }
     if (a === 'block' && !await ask('Block karein?', hn + ' ab report nahi bhej payega.', 'Block')) return;
     if (a === 'reset' && !await ask('Reset karein?', hn + ' ko dobara apply karna hoga. Purani reports safe rahengi.', 'Reset')) return;
-    let amount = 0;
-    if (a === 'valid') { amount = Math.round(+$('am_' + id).value || 0); if (!(amount > 0 && amount <= 100)) { toast('Valid ke liye amount 1 se 100 likhein', true); return; } }
+    let amount = 0; const prevSt = status[u], prevV = verdicts[id] ? { ...verdicts[id] } : null;
+    const undoSt = async () => { await set(ref(db, 'bounty/status/' + u), prevSt || null); if (prevSt) status[u] = prevSt; else delete status[u]; };
+    if (a === 'valid') {
+      amount = Math.round(+$('am_' + id).value || 0); if (!(amount > 0 && amount <= 100)) { toast('Valid ke liye amount 1 se 100 likhein', true); return; }
+      const cap = +settings.monthCap || 0, ms = monthStats(id);
+      if (cap && ms.valid + amount > cap && !await ask('Mahine ka cap paar hoga', 'Is mahine ₹' + ms.valid + ' valid ho chuka hai, cap ₹' + cap + '. Phir bhi ₹' + amount + ' valid karein?', 'Haan, valid')) return;
+    }
     b.classList.add('busy'); b.textContent = '…';
-    if (a === 'approve') { await set(ref(db, 'bounty/status/' + u), 'approved'); status[u] = 'approved'; toast('✅ ' + hn + ' approve ho gaya'); }
-    else if (a === 'block') { await set(ref(db, 'bounty/status/' + u), 'blocked'); status[u] = 'blocked'; toast('⛔ ' + hn + ' block ho gaya'); }
+    if (a === 'approve') { await set(ref(db, 'bounty/status/' + u), 'approved'); status[u] = 'approved'; toast('✅ ' + hn + ' approve ho gaya', false, undoSt); }
+    else if (a === 'block') { await set(ref(db, 'bounty/status/' + u), 'blocked'); status[u] = 'blocked'; toast('⛔ ' + hn + ' block ho gaya', false, undoSt); }
     else if (a === 'reset') {
       const up = { ['hunters/' + b.dataset.w]: null }; if (u) { up['byUid/' + u] = null; up['status/' + u] = null; }
       await update(ref(db, 'bounty'), up); delete hunters[b.dataset.w]; if (u) delete status[u]; toast('🔄 Reset ho gaya, ' + hn + ' dobara apply kar sakta hai');
     } else if (a === 'paid') {
-      const v = verdicts[id], r = reports[id], np = !v.paid;
-      const up = { ['admin/verdicts/' + id + '/paid']: np, ['admin/verdicts/' + id + '/updatedAt']: serverTimestamp() };
-      if (r) { up['pub/' + r.hunterId + '/' + id + '/paid'] = np; up['pub/' + r.hunterId + '/' + id + '/updatedAt'] = serverTimestamp(); }
-      await update(ref(db, 'bounty'), up); v.paid = np; toast(np ? '💸 Paid mark ho gaya' : 'Paid hata diya');
+      const np = !verdicts[id].paid; await setPaid([id], np); toast(np ? '💸 Paid mark ho gaya' : 'Paid hata diya', false, () => setPaid([id], !np));
     } else {
-      const v = { status: a, amount: a === 'valid' ? amount : 0, paid: false, updatedAt: serverTimestamp() }, r = reports[id];
-      const up = { ['admin/verdicts/' + id]: v };
-      if (r) up['pub/' + r.hunterId + '/' + id] = { status: a, amount: v.amount, paid: false, updatedAt: serverTimestamp() }; // user sees this in "Meri reports"
-      await update(ref(db, 'bounty'), up); verdicts[id] = { ...v, updatedAt: Date.now() };
-      toast({ valid: '✅ Valid ₹' + amount + ' save ho gaya', duplicate: '🔁 Duplicate mark ho gaya', rejected: '❌ Reject ho gaya' }[a]);
+      await writeVerdict(id, { status: a, amount: a === 'valid' ? amount : 0, paid: false });
+      toast({ valid: '✅ Valid ₹' + amount + ' save ho gaya', duplicate: '🔁 Duplicate mark ho gaya', rejected: '❌ Reject ho gaya' }[a], false, () => writeVerdict(id, prevV));
     }
     render();
   } catch (err) { toast('Nahi hua: ' + errMsg(err), true); }
   finally { b.classList.remove('busy'); if (b.isConnected) b.textContent = label; }
+});
+
+document.addEventListener('click', async e => {
+  const f = e.target.closest('[data-f]'); if (f) { rf = f.dataset.f; renderBar(); renderList(); return; }
+  const cp = e.target.closest('[data-cp]'); if (cp) { try { await navigator.clipboard.writeText(cp.dataset.cp); toast('Copy ho gaya: ' + cp.dataset.cp); } catch { toast('Copy nahi hua', true); } }
 });
 
 /* ---------- export ---------- */

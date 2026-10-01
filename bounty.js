@@ -54,41 +54,65 @@ const RULES_TEXT = RULES.join('\n') + '\n\nYE BUG NAHI HAIN / PEHLE SE MALOOM:\n
 
 /* ============ EXAM ============ */
 const POOL = [
-  ['Search mein Quran ke asli letters likhe, par wo ayat result mein nahi aayi. Ye?', ['Valid bug', 'Bug nahi', 'Sirf duplicate hota hai', 'Inaam sirf page ke liye'], 0],
-  ['Quiz mein page number galat dikha, para aur pip sahi hain. Inaam?', ['Milega', 'Nahi milega, sirf para/pip count hote hain', 'Aadha milega', 'Double milega'], 1],
-  ['Search mein "الرحمان" (Uthmani se alag spelling) likha aur kuch nahi mila. Ye?', ['Valid bug', 'Bug nahi, search Rasm-e-Uthmani se hota hai', 'Data ki galti', 'Quiz ka bug'], 1],
-  ['Ek hi wajah se 30 alag ayat search mein nahi mile. Inaam?', ['30 bugs ka 30 inaam', 'Ek bug, ek inaam', 'Koi inaam nahi', 'Sirf pehli ayat ka'], 1],
-  ['Aapse pehle kisi ne wahi bug report kar diya. Inaam kise?', ['Dono ko', 'Aakhri reporter ko', 'Pehle reporter ko', 'Kisi ko nahi'], 2],
-  ['Ek din mein zyada se zyada kitni reports?', ['1', '5', '20', 'Unlimited'], 1],
-  ['Ek valid unique bug par max inaam kitna?', ['Rs 10', 'Rs 50', 'Rs 100', 'Rs 1000'], 2],
-  ['Report ke liye kya zaruri hai?', ['Sirf screenshot', 'Sahi surah:ayat aur reference mushaf ke hisaab se para/pip', 'Sirf apna naam', 'Kuch nahi'], 1]
+  ['Search mein Quran ke asli letters likhe, par wo ayat result mein nahi aayi. Ye?', ['Valid bug', 'Bug nahi', 'Sirf duplicate hota hai', 'Inaam sirf page ke liye'], 0, 'Asli letters likhne par ayat na aaye to ye search ka valid bug hai (rule 6b).'],
+  ['Quiz mein page number galat dikha, para aur pip sahi hain. Inaam?', ['Milega', 'Nahi milega, sirf para/pip count hote hain', 'Aadha milega', 'Double milega'], 1, 'Sirf para aur page-in-para (pip) count hote hain. Page ka claim inaam ke liye nahi chalta (rule 3).'],
+  ['Search mein "الرحمان" (Uthmani se alag spelling) likha aur kuch nahi mila. Ye?', ['Valid bug', 'Bug nahi, search Rasm-e-Uthmani se hota hai', 'Data ki galti', 'Quiz ka bug'], 1, 'Search Rasm-e-Uthmani ke hisaab se hota hai. Doosri spelling bug nahi hai (rule 5).'],
+  ['Ek hi wajah se 30 alag ayat search mein nahi mile. Inaam?', ['30 bugs ka 30 inaam', 'Ek bug, ek inaam', 'Koi inaam nahi', 'Sirf pehli ayat ka'], 1, 'Ek wajah = ek bug, chahe kitni bhi ayat fail hon (rule 8).'],
+  ['Aapse pehle kisi ne wahi bug report kar diya. Inaam kise?', ['Dono ko', 'Aakhri reporter ko', 'Pehle reporter ko', 'Kisi ko nahi'], 2, 'Server time ke hisaab se pehli report ko inaam milta hai, baaki duplicate hain (rule 7).'],
+  ['Ek din mein zyada se zyada kitni reports?', ['1', '5', '20', 'Unlimited'], 1, 'Ek din mein max ' + MAX_PER_DAY + ' reports (rule 11).'],
+  ['Ek valid unique bug par max inaam kitna?', ['Rs 10', 'Rs 50', 'Rs 100', 'Rs 1000'], 2, 'Max inaam Rs 100 hai. Amount admin tay karta hai (rule 2).'],
+  ['Report ke liye kya zaruri hai?', ['Sirf screenshot', 'Sahi surah:ayat aur reference mushaf ke hisaab se para/pip', 'Sirf apna naam', 'Kuch nahi'], 1, 'Sahi surah:ayat aur reference mushaf ke hisaab se para/pip likhna zaruri hai (rule 12).']
 ];
-let exam = [];
+let exam = [], examI = 0, examAns = [], examLock = false, tmpScore = 0;
 
 function startExam() {
   const picks = [...POOL].sort(() => Math.random() - .5).slice(0, EXAM_Q);
-  exam = picks.map(([q, opts, a]) => {
+  exam = picks.map(([q, opts, a, why]) => {
     const order = opts.map((_, i) => i).sort(() => Math.random() - .5);
-    return { q, opts: order.map(i => opts[i]), a: order.indexOf(a) };
+    return { q, why, opts: order.map(i => opts[i]), a: order.indexOf(a) };
   });
-  $('qbExamBody').innerHTML = exam.map((e, i) =>
-    `<div class="qb-q"><b>${i + 1}. ${esc(e.q)}</b>` +
-    e.opts.map((o, j) => `<label class="qb-opt"><input type="radio" name="qbq${i}" value="${j}"> ${esc(o)}</label>`).join('') + '</div>').join('');
-  $('qbExamMsg').textContent = '';
-  showSection('qbExam');
+  examI = 0; examAns = []; examLock = false;
+  $('qbProg').style.width = '0%';
+  showSection('qbExam'); renderQ();
 }
 
-function submitExam() {
-  let score = 0, answered = 0;
-  exam.forEach((e, i) => {
-    const c = document.querySelector(`input[name="qbq${i}"]:checked`);
-    if (c) { answered++; if (+c.value === e.a) score++; }
-  });
-  if (answered < exam.length) { $('qbExamMsg').textContent = 'Saare sawalon ka jawab dein.'; return; }
-  if (score >= PASS_MARK) { tmpScore = score; $('qbFormMsg').textContent = ''; showSection('qbForm'); }
-  else $('qbExamMsg').innerHTML = `Score ${score}/${exam.length}. Pass ke liye ${PASS_MARK} sahi chahiye. Rules dobara padhein aur naye sawalon ke saath try karein.`;
+function renderQ() {
+  const e = exam[examI];
+  $('qbProg').style.width = (examI / exam.length * 100) + '%';
+  $('qbExamBody').innerHTML = `<div class="qb-mut">Sawal ${examI + 1} / ${exam.length}</div>
+    <div class="qb-qcard"><b>${esc(e.q)}</b></div>` +
+    e.opts.map((o, j) => `<button type="button" class="qb-choice" data-ans="${j}">${esc(o)}</button>`).join('');
 }
-let tmpScore = 0;
+
+function pickAnswer(ev) {
+  const b = ev.target.closest('[data-ans]'); if (!b || examLock) return;
+  examLock = true; b.classList.add('picked'); examAns.push(+b.dataset.ans);
+  setTimeout(() => { examLock = false; examI++; examI < exam.length ? renderQ() : finishExam(); }, 380);
+}
+
+function finishExam() {
+  const score = exam.filter((e, i) => examAns[i] === e.a).length, pass = score >= PASS_MARK;
+  const wrong = exam.map((e, i) => ({ e, i })).filter(({ e, i }) => examAns[i] !== e.a);
+  $('qbProg').style.width = '100%';
+  if (pass) tmpScore = score;
+  $('qbExamBody').innerHTML = `<div class="qb-res ${pass ? 'pass' : 'fail'}"><div class="qb-score">${score}/${exam.length}</div>
+      <b>${pass ? 'Exam pass! 🎉' : 'Is baar pass nahi hue'}</b><div class="qb-mut">Pass ke liye ${PASS_MARK} sahi chahiye.</div></div>` +
+    (wrong.length ? '<h3>Ye sawal galat hue</h3>' + wrong.map(({ e, i }) =>
+      `<div class="qb-box qb-wrong"><b>${esc(e.q)}</b><div class="qb-mut">Aapka jawab: ${esc(e.opts[examAns[i]])}</div>
+       <div class="qb-right">✓ ${esc(e.opts[e.a])}</div><div class="qb-why">${esc(e.why)}</div></div>`).join('') : '') +
+    (pass ? '<button class="btn btn-primary btn-lg btn-block" data-qb="examNext">Details bharein →</button>'
+          : '<button class="btn btn-primary btn-lg btn-block" data-qb="examRetry">Naye sawalon ke saath retry</button><button class="btn btn-ghost btn-block" data-qb="rules">📜 Rules dobara padhein</button>');
+}
+
+/* ---- rules screen: grouped, collapsible ---- */
+const RSEC = [['💰', 'Inaam kitna milega', [1, 2, 13]], ['📖', 'Mushaf aur search', [3, 4, 5]], ['🐞', 'Valid bug kya hai', [6, 8, 9]], ['🔁', 'Duplicate report', [7]], ['✅', 'Approval, limit, report', [10, 11, 12]]];
+const ruleHtml = n => { const t = RULES[n + 1].replace(/^\d+\.\s*/, ''), m = t.match(/^([A-Z][A-Z \-\/()]+?):\s*([\s\S]*)$/); return m ? `<b>${esc(m[1])}:</b> ${esc(m[2])}` : esc(t); };
+const knownCard = () => `<div class="qb-known"><div class="qb-kh">❌ Ye bug nahi hain</div><p class="qb-mut">In par inaam nahi milega.</p><ul>${KNOWN.map(k => `<li>${esc(k)}</li>`).join('')}</ul></div>`;
+function renderRules() {
+  $('qbRulesList').innerHTML = RSEC.map(([ic, t, ns], i) =>
+    `<details class="qb-sec"${i === 0 ? ' open' : ''}><summary><span>${ic}</span>${t}</summary><ul>${ns.map(n => `<li>${ruleHtml(n)}</li>`).join('')}</ul></details>`).join('') + knownCard();
+  $('qbKnownBody').innerHTML = knownCard();
+}
 
 /* ============ HUNTER ============ */
 const CK = 'qb_cache';
@@ -165,7 +189,8 @@ function refreshHome() {
       <label class="qb-sw"><input type="checkbox" data-qb="toggle" ${hunterOn() ? 'checked' : ''}><i></i></label></div>`;
     html += `<button class="btn btn-secondary btn-block" data-qb="history">📋 Meri reports (${mine.length})</button>`;
   }
-  html += `<button class="btn btn-ghost btn-block" data-qb="rules">📜 Rules padho</button>`;
+  html += `<button class="btn btn-ghost btn-block" data-qb="rules">📜 Rules padho</button>
+    <button class="btn btn-ghost btn-block" data-qb="known">❌ Ye bug nahi hain</button>`;
   el.innerHTML = html;
 }
 
@@ -201,6 +226,7 @@ async function registerHunter() {
 }
 
 /* ============ REPORT ============ */
+let reportFrom = 'menuScreen';
 let snap = null; // { type, ...auto-attached read-only data }
 let lastQuiz = null;
 
@@ -208,6 +234,7 @@ function todayCount() { const d = LS.get('qb_day'); const t = new Date().toDateS
 
 function openReport(type) {
   if (!hunterOn()) return;
+  reportFrom = type === 'search' ? 'searchScreen' : 'quizScreen';
   if (todayCount() >= MAX_PER_DAY) { toast('Aaj ki limit (' + MAX_PER_DAY + ' reports) poori ho gayi. Kal try karein.'); return; }
   let ro = '';
   if (type === 'search') {
@@ -275,28 +302,27 @@ async function submitReport() {
 }
 
 /* ============ BUILD UI ============ */
-function screen(id, html) { const s = document.createElement('section'); s.id = id; s.className = 'screen'; s.innerHTML = html; document.querySelector('main').appendChild(s); }
+function screen(id, html) { const s = document.createElement('section'); s.id = id; s.className = 'screen'; s.innerHTML = '<div class="panel qb-panel">' + html + '</div>'; document.querySelector('main').appendChild(s); }
 const back = to => `<button class="back-btn" onclick="showSection('${to}')">← Wapas</button>`;
 
 function build() {
   screen('qbHome', `${back('menuScreen')}<div id="qbDash"></div>`);
   screen('qbHistory', `${back('qbHome')}<h2>📋 Meri reports</h2><div id="qbHist"></div>
     <button class="btn btn-ghost btn-block" data-qb="reload">🔄 Refresh</button>`);
-  screen('qbRules', `${back('qbHome')}<h2>📜 Rules</h2>
-    <div id="qbRulesText" class="qb-box qb-pre"></div>
+  screen('qbRules', `${back('qbHome')}<h2>📜 Rules</h2><div id="qbRulesList"></div>
     <button id="qbDl" class="btn btn-secondary btn-block">📥 Rules download (.txt)</button>
     <label class="qb-opt"><input type="checkbox" id="qbAgree"> Maine rules padh liye</label>
     <button id="qbExamBtn" class="btn btn-primary btn-lg btn-block" disabled>Exam do →</button>`);
-  screen('qbExam', `${back('qbRules')}<h2>📝 Chhota Exam</h2><p>${EXAM_Q} sawal, pass ke liye ${PASS_MARK} sahi.</p>
-    <div id="qbExamBody"></div><div id="qbExamMsg" class="qb-msg"></div>
-    <button id="qbExamSubmit" class="btn btn-primary btn-lg btn-block">Jawab bhejein</button>`);
-  screen('qbForm', `<h2>✅ Exam pass!</h2><p>Payment ke liye apni details bharein.</p>
+  screen('qbKnown', `${back('qbHome')}<h2>❌ Ye bug nahi hain</h2><div id="qbKnownBody"></div>`);
+  screen('qbExam', `${back('qbRules')}<h2>📝 Chhota Exam</h2>
+    <div class="qb-prog"><i id="qbProg"></i></div><div id="qbExamBody"></div>`);
+  screen('qbForm', `${back('qbHome')}<h2>✅ Exam pass!</h2><p>Payment ke liye apni details bharein.</p>
     <input id="qbName" class="qb-in" placeholder="Poora naam" autocomplete="name">
     <input id="qbWa" class="qb-in" placeholder="WhatsApp number" inputmode="tel" autocomplete="tel">
     <input id="qbUpi" class="qb-in" placeholder="UPI ID (naam@bank) ya UPI number">
     <div id="qbFormMsg" class="qb-msg"></div>
     <button id="qbFormBtn" class="btn btn-primary btn-lg btn-block">Submit</button>`);
-  screen('qbReport', `${back('menuScreen')}<h2>🐞 Galti report karo</h2>
+  screen('qbReport', `<button class="back-btn" id="qbRepBack">← Wapas</button><h2>🐞 Galti report karo</h2>
     <p>Ye auto-attach hai (badal nahi sakte):</p><div id="qbRO" class="qb-box qb-pre qb-ro"></div>
     <p id="qbClaimHelp"></p>
     <div id="qbSearchClaim"><input id="qbSurah" class="qb-in" type="number" placeholder="Surah number (1-114)" inputmode="numeric">
@@ -306,7 +332,7 @@ function build() {
     <textarea id="qbOpinion" class="qb-in" rows="3" placeholder="Aapki raay (optional)"></textarea>
     <div id="qbRepMsg" class="qb-msg"></div>
     <button id="qbRepBtn" class="btn btn-primary btn-lg btn-block">Report bhejein</button>`);
-  $('qbRulesText').textContent = RULES_TEXT;
+  renderRules();
 
   $('qbAgree').onchange = e => $('qbExamBtn').disabled = !e.target.checked || !!hunter();
   $('qbDl').onclick = () => {
@@ -318,14 +344,15 @@ function build() {
   document.addEventListener('click', e => {
     const cp = e.target.closest('[data-cp]'); if (cp) { try { navigator.clipboard.writeText(cp.dataset.cp); toast('Copy ho gaya'); } catch {} return; }
     const b = e.target.closest('[data-qb]'); if (!b || b.tagName === 'INPUT') return;
-    ({ apply: openRules, rules: openRules, retry: syncStatus, reload: async () => { await syncStatus(); toast('Refresh ho gaya'); },
+    ({ apply: openRules, rules: openRules, known: () => showSection('qbKnown'), examRetry: startExam, examNext: () => { $('qbFormMsg').textContent = ''; showSection('qbForm'); }, retry: syncStatus, reload: async () => { await syncStatus(); toast('Refresh ho gaya'); },
        history: () => { renderHistory(); showSection('qbHistory'); syncStatus(); } })[b.dataset.qb]?.();
   });
   document.addEventListener('change', e => { if (e.target.dataset && e.target.dataset.qb === 'toggle') { LS.set('qb_on', e.target.checked); refreshHome(); toast(e.target.checked ? 'Hunter mode ON 🐞' : 'Hunter mode OFF'); } });
   $('qbExamBtn').onclick = startExam;
-  $('qbExamSubmit').onclick = submitExam;
+  $('qbExamBody').onclick = pickAnswer;
   $('qbFormBtn').onclick = registerHunter;
   $('qbRepBtn').onclick = submitReport;
+  $('qbRepBack').onclick = () => showSection(reportFrom);
 
   /* 🐞 buttons (only visible in Hunter mode, see bounty.css) */
   const sb = document.createElement('button');
