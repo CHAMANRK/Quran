@@ -564,6 +564,7 @@ function renderSearchResults(input) {
           <span class="badge">${highlightExactWord(r.surah_name, input)}</span>
           <span class="badge">Page ${r.page}</span>
           <span class="badge">Para ${paraNum}</span>
+          <span class="badge">Pip ${r.pip}</span>
         </div>
       </div>
     `;
