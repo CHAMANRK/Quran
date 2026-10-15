@@ -130,9 +130,15 @@
     <div class="panel">
       <button class="back-btn" onclick="showSection('menuScreen')">← Wapas</button>
       <h2 class="panel-title">Ayat Search Karein</h2>
-      <p class="panel-sub">Arabic text, Surah name, ya Page/Para number likhiye. "شروع" se harf likhein to usi se shuru hone wali ayat aayengi; "صرف" se maadde ke harf se sigha aur baab dekhein</p>
+      <p class="panel-sub">Arabic text, Surah name, ya Page/Para number likhiye. "شروع" se harf likhein to usi se shuru hone wali ayat aayengi</p>
 
       <div class="search-panel open" id="searchContainer">
+        <div class="filter-chips search-tabs" id="searchTabs">
+          <button class="chip active" data-tab="search">تلاش</button>
+          <button class="chip" data-tab="sarf">صرف</button>
+        </div>
+
+        <div id="searchMain">
         <div class="search-box">
           <span class="search-icon">🔎</span>
           <input id="searchInput" type="text" placeholder="Ayat, Surah, ya Page number likhiye..." autocomplete="off">
@@ -141,13 +147,27 @@
           <button class="chip active" data-filter="all">Sab</button>
           <button class="chip" data-filter="text">Ayat</button>
           <button class="chip" data-filter="starts">شروع (حرف سے)</button>
-          <button class="chip" data-filter="sarf">صرف (مادّہ / باب)</button>
           <button class="chip" data-filter="surah">Surah</button>
           <button class="chip" data-filter="page">Page/Para</button>
         </div>
         <div id="searchMeta" class="search-meta hidden"></div>
         <div id="searchResults" aria-live="polite"></div>
         <button id="loadMoreBtn" class="btn btn-secondary btn-block hidden" onclick="loadMoreResults()">Aur Dikhaein</button>
+        </div>
+
+        <!-- صرف ٹیب: sarf.js isko bharta hai -->
+        <div id="sarfPanel" class="hidden" dir="rtl">
+          <div class="sarf-label">کیا تلاش کرنا ہے؟</div>
+          <div class="filter-chips" id="sarfKinds"></div>
+          <div class="filter-chips hidden" id="sarfBaabs"></div>
+          <div class="search-box">
+            <span class="search-icon">🔎</span>
+            <input id="sarfInput" type="text" placeholder="مادّے کا پہلا حرف یا پورا مادّہ (جیسے ك یا كتب)" autocomplete="off">
+          </div>
+          <div id="sarfMeta" class="search-meta sarf-ur"></div>
+          <div id="sarfList"></div>
+          <button id="sarfMore" class="btn btn-secondary btn-block hidden sarf-ur">مزید دکھائیں</button>
+        </div>
       </div>
     </div>
   </section>

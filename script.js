@@ -545,12 +545,6 @@ function searchAyats() {
   const metaDiv = document.getElementById('searchMeta');
   const loadMoreBtn = document.getElementById('loadMoreBtn');
 
-  if (searchFilter === 'sarf') {            // sarf.js handles this mode
-    if (window.sarfSearch) window.sarfSearch(inputRaw);
-    return;
-  }
-  if (window.sarfHide) window.sarfHide();   // leaving sarf mode -> clear its panel
-
   if (!input) {
     resultsDiv.innerHTML = "";
     metaDiv.classList.add('hidden');

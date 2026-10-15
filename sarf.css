@@ -1,12 +1,8 @@
-/* Sarf search — existing .chip/.badge/.search-result styles reuse hote hain */
-#sarfResults .sarf-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 4px; }
-#sarfResults .sarf-root { font-family:'Scheherazade New',serif; font-size:2rem; font-weight:700; line-height:1.2; }
-#sarfResults .sarf-sub { color:var(--text-muted,#777); font-size:.85rem; flex:1; }
-#sarfResults .sarf-label { font-size:.78rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted,#777); margin:10px 0 4px; }
-#sarfResults .sarf-chips { flex-wrap:wrap; }
-#sarfResults .sarf-chips .chip b { margin-left:4px; }
-
-#sarfResults .sarf-empty { color:var(--text-muted,#777); text-align:center; padding:20px 0; }
-#sarfResults .search-result { cursor:pointer; }
-#sarfResults .sarf-ur { font-family:'Scheherazade New',serif; font-size:1.1em; }
-#sarfResults .sarf-ur b { font-family:inherit; }
+/* صرف ٹیب — maujooda .chip/.badge/.search-result/.search-box styles reuse hote hain */
+.search-tabs { margin-bottom: 12px; }
+#sarfPanel .sarf-label { font-size:.85rem; font-weight:700; color:var(--text-muted,#777); margin:4px 0 6px; }
+#sarfPanel .filter-chips { flex-wrap:wrap; margin-bottom:10px; }
+#sarfPanel .sarf-ur, .sarf-ur { font-family:'Scheherazade New',serif; font-size:1.1em; }
+#sarfPanel .sarf-empty { color:var(--text-muted,#777); text-align:center; padding:20px 0; }
+#sarfPanel .search-result { cursor:pointer; }
+#sarfPanel input { text-align:right; }
