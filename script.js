@@ -485,6 +485,24 @@ function surahMatches(ayat, typed) {
   return surahKeysFor(ayat).some(k => k.includes(q));
 }
 
+// Ayat ka woh hissa jis se ayat "shuru" hoti hai (bismillah hata kar), normalized.
+// Cache kiya hai taaki har keystroke par 6236 ayat dobara normalize na ho.
+let _startsCache = null;
+// Start-search ke liye lenient key: tashkeel/space hata do aur repeated alif ek kar do
+// (Uthmani "يَٰٓأَيُّهَا" aur typed "يا ايها" dono ek hi key dein).
+function startKey(s) {
+  return normalizeArabic(s).replace(/\s+/g, '').replace(/\u0627+/g, '\u0627');
+}
+function ayatStartText(a) {
+  if (!_startsCache) _startsCache = new Map();
+  let v = _startsCache.get(a);
+  if (v === undefined) {
+    v = startKey(splitBismillah(a).body);
+    _startsCache.set(a, v);
+  }
+  return v;
+}
+
 let currentSearchResults = [];
 let currentSearchPage = 0;
 const RESULTS_PER_PAGE = 20;
@@ -497,6 +515,20 @@ document.getElementById('filterChips').addEventListener('click', e => {
   searchFilter = chip.dataset.filter;
   searchAyats();
 });
+
+function highlightStart(text, input) {
+  // Sirf shuru ke lafz/harf ko highlight karo (bismillah chhod kar)
+  const needle = startKey(input);
+  const chars = Array.from(text);
+  let acc = '';
+  for (let i = 0; i < chars.length; i++) {
+    acc += chars[i];
+    if (startKey(acc) === needle && !/[\u064B-\u065F\u0670\u06D6-\u06ED]/.test(chars[i + 1] || '')) {
+      return `<mark>${acc}</mark>` + chars.slice(i + 1).join('');
+    }
+  }
+  return text;
+}
 
 function highlightExactWord(text, input) {
   const words = text.split(/(\s+)/);
@@ -523,6 +555,7 @@ function searchAyats() {
 
   currentSearchResults = quranData.filter(a => {
     const paraNum = String(a.para);
+    if (searchFilter === 'starts') return ayatStartText(a).startsWith(startKey(input));
     if (searchFilter === 'text') return normalizeArabic(a.text.toLowerCase()).includes(input);
     if (searchFilter === 'surah') return surahMatches(a, inputRaw);
     if (searchFilter === 'page') return String(a.page) === input || paraNum === input;
@@ -533,6 +566,11 @@ function searchAyats() {
 
   currentSearchPage = 0;
   renderSearchResults(input);
+}
+
+function startSnippet(r, input) {
+  const { bismillah, body } = splitBismillah(r);
+  return (bismillah ? bismillah + ' ' : '') + highlightStart(body, input);
 }
 
 function renderSearchResults(input) {
@@ -548,7 +586,9 @@ function renderSearchResults(input) {
     return;
   }
 
-  metaDiv.textContent = `Total Matched: ${total}`;
+  metaDiv.textContent = searchFilter === 'starts'
+    ? `"${input}" se shuru hone wali ayat: ${total}`
+    : `Total Matched: ${total}`;
   metaDiv.classList.remove('hidden');
 
   const endIndex = (currentSearchPage + 1) * RESULTS_PER_PAGE;
@@ -559,7 +599,7 @@ function renderSearchResults(input) {
     const globalIdx = quranData.indexOf(r);
     return `
       <div class="search-result" onclick="openReader(${globalIdx})">
-        <div class="ayat-snippet">${highlightExactWord(r.text, input)}</div>
+        <div class="ayat-snippet">${searchFilter === 'starts' ? startSnippet(r, input) : highlightExactWord(r.text, input)}</div>
         <div class="result-meta">
           <span class="badge">${highlightExactWord(r.surah_name, input)}</span>
           <span class="badge">Page ${r.page}</span>
