@@ -1,0 +1,12 @@
+/* Sarf search — existing .chip/.badge/.search-result styles reuse hote hain */
+#sarfResults .sarf-head { display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin:12px 0 4px; }
+#sarfResults .sarf-root { font-family:'Scheherazade New',serif; font-size:2rem; font-weight:700; line-height:1.2; }
+#sarfResults .sarf-sub { color:var(--text-muted,#777); font-size:.85rem; flex:1; }
+#sarfResults .sarf-label { font-size:.78rem; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--text-muted,#777); margin:10px 0 4px; }
+#sarfResults .sarf-chips { flex-wrap:wrap; }
+#sarfResults .sarf-chips .chip b { margin-left:4px; }
+
+#sarfResults .sarf-empty { color:var(--text-muted,#777); text-align:center; padding:20px 0; }
+#sarfResults .search-result { cursor:pointer; }
+#sarfResults .sarf-ur { font-family:'Scheherazade New',serif; font-size:1.1em; }
+#sarfResults .sarf-ur b { font-family:inherit; }

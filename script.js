@@ -545,6 +545,12 @@ function searchAyats() {
   const metaDiv = document.getElementById('searchMeta');
   const loadMoreBtn = document.getElementById('loadMoreBtn');
 
+  if (searchFilter === 'sarf') {            // sarf.js handles this mode
+    if (window.sarfSearch) window.sarfSearch(inputRaw);
+    return;
+  }
+  if (window.sarfHide) window.sarfHide();   // leaving sarf mode -> clear its panel
+
   if (!input) {
     resultsDiv.innerHTML = "";
     metaDiv.classList.add('hidden');
@@ -573,6 +579,8 @@ function startSnippet(r, input) {
   return (bismillah ? bismillah + ' ' : '') + highlightStart(body, input);
 }
 
+function inputRawForMeta() { return document.getElementById('searchInput').value.trim(); }
+
 function renderSearchResults(input) {
   const resultsDiv = document.getElementById('searchResults');
   const metaDiv = document.getElementById('searchMeta');
@@ -587,7 +595,7 @@ function renderSearchResults(input) {
   }
 
   metaDiv.textContent = searchFilter === 'starts'
-    ? `"${input}" se shuru hone wali ayat: ${total}`
+    ? `"${inputRawForMeta()}" سے شروع ہونے والی آیات: ${total}`
     : `Total Matched: ${total}`;
   metaDiv.classList.remove('hidden');
 
