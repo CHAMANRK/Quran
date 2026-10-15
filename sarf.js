@@ -12,9 +12,11 @@
     { key: 'PASS_PCPL', label: 'اسم مفعول',    test: x => x.t === 4 },
     { key: 'VN',        label: 'مصدر',         test: x => x.t === 5, note: 'نوٹ: ڈیٹا میں مصدر صرف ابواب ۲ تا ۱۰ کے نشان زد ہیں۔' },
     { key: 'PASS',      label: 'مجہول',        test: x => x.pass },
-    { key: 'BAAB',      label: 'باب',          test: x => x.vf > 0 }
+    { key: 'BAAB',      label: 'باب',          test: x => x.vf > 0 },
+    { key: 'ROOT',      label: 'لفظ سے مادّہ',  test: () => false }   // ulta lookup: lafz -> maadda
   ];
   const TYPE_LABEL = ['ماضی', 'مضارع', 'امر', 'اسم فاعل', 'اسم مفعول', 'مصدر'];
+  const LOOKUP_LABEL = ['فعل ماضی', 'فعل مضارع', 'فعل امر', 'اسم فاعل', 'اسم مفعول', 'مصدر', 'اسم'];
   const BAAB = {
     1: 'فَعَلَ', 2: 'فَعَّلَ', 3: 'فَاعَلَ', 4: 'أَفْعَلَ', 5: 'تَفَعَّلَ',
     6: 'تَفَاعَلَ', 7: 'اِنْفَعَلَ', 8: 'اِفْتَعَلَ', 9: 'اِفْعَلَّ', 10: 'اِسْتَفْعَلَ'
@@ -42,6 +44,80 @@
     try { await loading; return true; } catch (e) { loading = null; return false; }
   }
 
+  // ---- لفظ سے مادّہ (ulta lookup) ----
+  let dict = null, dictLoading = null;
+  async function ensureDict() {
+    if (dict) return true;
+    if (!dictLoading) {
+      dictLoading = fetch('maadda.json').then(r => r.json()).then(d => {
+        // same lafz + maadda + sigha + baab wale variants (tashkeel ka farq) ek group me
+        const groups = new Map();
+        d.rows.forEach(r => {
+          const [stem, root, lem, k, vf, ps, n, s, a] = r;
+          const key = [normalizeArabic(stem), root, k, vf, ps].join('|');
+          let g = groups.get(key);
+          if (!g) { g = { stem, nstem: normalizeArabic(stem), root, lem, k, vf, ps, n: 0, best: 0, s, a }; groups.set(key, g); }
+          g.n += n;
+          if (n > g.best) { g.best = n; g.stem = stem; }
+          if (s < g.s || (s === g.s && a < g.a)) { g.s = s; g.a = a; }
+        });
+        dict = new Map();
+        groups.forEach(g => { if (!dict.has(g.nstem)) dict.set(g.nstem, []); dict.get(g.nstem).push(g); });
+        if (!ayatIndex) {
+          ayatIndex = new Map();
+          window.quranData.forEach((q, i) => ayatIndex.set(q.surah_number + ':' + q.ayat_no, i));
+        }
+      });
+    }
+    try { await dictLoading; return true; } catch (e) { dictLoading = null; return false; }
+  }
+
+  // lafz ke saath lage sabiqe/laahiqe (و ف ب ل ال ... / ه ها هم نا ون ...) hata kar bhi talash karo
+  const PRE = ['', 'و', 'ف', 'ب', 'ل', 'ك', 'س', 'ال', 'وال', 'فال', 'بال', 'كال', 'لل', 'ولل', 'وب', 'ول', 'فب', 'فل', 'وس', 'فس'];
+  const SUF = ['', 'ه', 'ها', 'هم', 'هما', 'هن', 'كم', 'ك', 'نا', 'ني', 'ي', 'ون', 'ين', 'ان', 'وا', 'ا', 'ت', 'تم', 'تما', 'تن', 'ة', 'ات', 'تهم', 'نه', 'نها'];
+  function lookupWord(raw) {
+    const w = normalizeArabic(raw).replace(/[\s\u0640]/g, '');
+    if (!w) return null;
+    const tried = [];
+    PRE.forEach(p => { if (!w.startsWith(p)) return;
+      SUF.forEach(sf => { if (!w.endsWith(sf) || p.length + sf.length >= w.length) return;
+        tried.push({ form: w.slice(p.length, w.length - sf.length), cost: p.length + sf.length });
+      }); });
+    tried.sort((a, b) => a.cost - b.cost);
+    const seen = new Set();
+    for (const t of tried) {
+      if (seen.has(t.form)) continue; seen.add(t.form);
+      const hit = dict.get(t.form);
+      if (hit && hit.length) return { form: t.form, exact: t.cost === 0, hits: hit.slice().sort((a, b) => b.n - a.n) };
+    }
+    return { form: w, exact: true, hits: [] };
+  }
+
+  async function renderLookup() {
+    const meta = $('sarfMeta'), list = $('sarfList'), more = $('sarfMore');
+    more.classList.add('hidden'); list.innerHTML = '';
+    const raw = $('sarfInput').value.trim();
+    if (!raw) { meta.textContent = 'کوئی لفظ لکھیے (جیسے قُل یا قال) — اس کا مادّہ، صیغہ اور باب نظر آئے گا۔'; return; }
+    meta.textContent = 'لوڈ ہو رہا ہے…';
+    if (!(await ensureDict())) { meta.textContent = '❌ ڈیٹا لوڈ نہیں ہو سکا۔'; return; }
+    const r = lookupWord(raw);
+    if (!r || !r.hits.length) { meta.textContent = ''; list.innerHTML = '<p class="sarf-empty sarf-ur">یہ لفظ قرآن کے ڈیٹا میں نہیں ملا۔ لفظ کی اصل شکل لکھ کر دیکھیے۔</p>'; return; }
+    const roots = [...new Set(r.hits.map(h => h.root))];
+    meta.textContent = `نتائج: ${ud(r.hits.length)} · مادّہ: ${roots.join('، ')}` + (r.exact ? '' : ` · سابقہ/لاحقہ ہٹا کر «${r.hits[0].stem}» پر ملا`);
+    list.innerHTML = r.hits.map(h => {
+      const qa = window.quranData[ayatIndex.get(h.s + ':' + h.a)];
+      return `<div class="search-result" data-open="${h.s}:${h.a}">
+        <div class="ayat-snippet"><mark>${esc(h.stem)}</mark> ← مادّہ <b>${esc(h.root)}</b></div>
+        <div class="result-meta">
+          <span class="badge sarf-ur">${LOOKUP_LABEL[h.k]}${h.ps && h.k <= 1 ? ' · مجہول' : ''}</span>
+          ${h.vf ? `<span class="badge sarf-ur">${baabName(h.vf)}</span>` : ''}
+          ${h.lem ? `<span class="badge sarf-ur">اصل: ${esc(h.lem)}</span>` : ''}
+          <span class="badge sarf-ur">${ud(h.n)} مرتبہ</span>
+          <span class="badge sarf-ur">پہلی بار: ${SURAH_UR[h.s - 1] || h.s} : ${ud(h.a)}${qa ? ' · پارہ ' + ud(qa.para) : ''}</span>
+        </div></div>`;
+    }).join('');
+  }
+
   // ---- chips ----
   function drawChips() {
     $('sarfKinds').innerHTML = KINDS.map(k =>
@@ -55,6 +131,8 @@
   // ---- natije ----
   async function render() {
     const meta = $('sarfMeta'), list = $('sarfList'), more = $('sarfMore');
+    $('sarfInput').placeholder = st.kind === 'ROOT' ? 'کوئی لفظ لکھیے (جیسے قل یا قال)' : 'مادّے کا پہلا حرف یا پورا مادّہ (جیسے ك یا كتب)';
+    if (st.kind === 'ROOT') return renderLookup();
     more.classList.add('hidden');
     if (st.kind === 'BAAB' && !st.baab) { meta.textContent = 'اوپر سے کوئی باب منتخب کیجیے۔'; list.innerHTML = ''; return; }
     meta.textContent = 'لوڈ ہو رہا ہے…';
