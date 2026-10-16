@@ -6,3 +6,32 @@
 #sarfPanel .sarf-empty { color:var(--text-muted,#777); text-align:center; padding:20px 0; }
 #sarfPanel .search-result { cursor:pointer; }
 #sarfPanel input { text-align:right; }
+
+/* ===== reader me لفظ کا تجزیہ ===== */
+.reader-content .tw { cursor: pointer; border-radius: 4px; transition: background .15s; }
+.reader-content .tw:hover { background: rgba(255, 193, 7, .25); }
+.reader-content .tw-active { background: rgba(255, 193, 7, .45); }
+.th-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 1000; max-height: 62vh; overflow-y: auto;
+  background: var(--surface, #fff); color: var(--text, #222); border-radius: 18px 18px 0 0; padding: 14px 16px 22px;
+  box-shadow: 0 -8px 30px rgba(0,0,0,.25); font-family: 'Scheherazade New', serif; font-size: 1.1rem; }
+.th-sheet.hidden { display: none; }
+.th-handle { width: 40px; height: 4px; border-radius: 2px; background: rgba(128,128,128,.5); margin: 0 auto 8px; }
+.th-close { position: absolute; top: 10px; left: 12px; border: 0; background: transparent; font-size: 1.2rem; color: inherit; cursor: pointer; }
+.th-word { font-size: 2.2rem; font-weight: 700; text-align: center; line-height: 1.5; }
+.th-label { font-size: .8rem; font-weight: 700; opacity: .65; margin: 10px 0 4px; }
+.th-parts { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; justify-content: center; }
+.th-part { display: inline-flex; flex-direction: column; align-items: center; padding: 4px 10px; border: 1px solid rgba(128,128,128,.35); border-radius: 10px; }
+.th-part b { font-size: 1.5rem; }
+.th-part small { font-size: .75rem; opacity: .7; }
+.th-plus { opacity: .5; }
+.th-card { margin-top: 10px; padding: 10px 12px; border: 1px solid rgba(128,128,128,.3); border-radius: 12px; }
+.th-card-title { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.th-big { font-size: 1.6rem; font-weight: 700; }
+.th-kind { font-size: .95rem; opacity: .8; }
+.th-row { display: flex; gap: 10px; padding: 3px 0; border-top: 1px dashed rgba(128,128,128,.25); }
+.th-k { flex: 0 0 38%; opacity: .65; font-size: .95rem; }
+.th-v { flex: 1; }
+.th-dim { opacity: .6; font-size: .85em; }
+.th-note { margin-top: 6px; font-size: .95rem; opacity: .85; line-height: 1.6; }
+.th-list { margin: 0; padding: 0 18px 0 0; line-height: 1.8; }
+.th-msg { text-align: center; opacity: .7; padding: 14px 0; }

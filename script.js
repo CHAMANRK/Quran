@@ -657,7 +657,7 @@ function openReader(clickedIndex) {
     if (bismillah) {
       html += `<div class="reader-bismillah">${bismillah}</div>`;
     }
-    html += `<span class="reader-ayat${isClicked ? ' jump-highlight' : ''}" ${isClicked ? 'id="jumpTarget"' : ''}>${body}<span class="ayat-num-marker">${a.ayat_no}</span></span> `;
+    html += `<span class="reader-ayat${isClicked ? ' jump-highlight' : ''}" ${isClicked ? 'id="jumpTarget"' : ''}>${window.tahleelWrap ? window.tahleelWrap(a, body) : body}<span class="ayat-num-marker">${a.ayat_no}</span></span> `;
   });
 
   document.getElementById('readerContent').innerHTML = html;
