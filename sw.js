@@ -2,7 +2,7 @@
    Naya version deploy karte waqt VER ka number badal dein (qq-v3, qq-v4...) taaki purana cache saaf ho.
    Agar tahleel/, morph.json ya maadda.json ka data badla ho to DATA_VER bhi badal dein — tab sab users ko
    dobara "ڈیٹا تیار ہو رہا ہے" loader dikhega. */
-const VER = 'qq-v2';
+const VER = 'qq-v3'
 const DATA = 'qq-data-v1';           // optional offline data (user hata sakta hai) — naam badalte hi purana khud saaf
 const APP = ['index.html', 'style.css', 'script.js', 'sarf.js', 'sarf.css', 'tahleel.js', 'offline.js', 'multiplayer.js', 'bounty.js', 'bounty.css',
   'pwa.js', 'quran_full.json', 'manifest.webmanifest', 'logo.png', 'icon-192.png'];

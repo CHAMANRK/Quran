@@ -118,7 +118,8 @@
     return el;
   }
   function closeSheet() {
-    const el = document.getElementById('tahleelSheet'); if (el) el.classList.add('hidden');
+    const el = document.getElementById('tahleelSheet');
+    if (el && !el.classList.contains('hidden')) el.classList.add('hidden');   // pehle se band ho to dobara chhoona nahi
     document.querySelectorAll('.tw-active').forEach(x => x.classList.remove('tw-active'));
   }
   const row = (k, v) => v ? `<div class="th-row"><span class="th-k">${k}</span><span class="th-v">${v}</span></div>` : '';
@@ -187,7 +188,8 @@
     } catch (err) { body.innerHTML = '<p class="th-msg">❌ ڈیٹا لوڈ نہیں ہو سکا۔</p>'; }
   });
   document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSheet(); });
-  // reader chhodte hi sheet band
-  new MutationObserver(() => { const r = document.getElementById('readerScreen'); if (r && !r.classList.contains('active')) closeSheet(); })
-    .observe(document.body, { subtree: true, attributes: true, attributeFilter: ['class'] });
+  // reader chhodte hi sheet band — sirf readerScreen ki apni class dekhte hain (poore body ko nahi,
+  // warna sheet band karne se hone wala badlav observer ko dobara chala deta hai aur page atak jata hai)
+  const rs = document.getElementById('readerScreen');
+  if (rs) new MutationObserver(() => { if (!rs.classList.contains('active')) closeSheet(); }).observe(rs, { attributes: true, attributeFilter: ['class'] });
 })();
